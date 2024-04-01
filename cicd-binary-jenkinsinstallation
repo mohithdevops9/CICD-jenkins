@@ -1,0 +1,60 @@
+pipeline { 
+    
+agent any
+
+stages {
+    stage('Hello') {
+        steps {
+            echo 'Hello World'
+            git branch: 'main', credentialsId: 'github-tokenn', url: 'https://github.com/mohithdevops9/hello_world_public_war.git'
+        }
+    }
+    // stage('SonarQube Analysis') {
+    //     steps{
+    //       script{
+    //           def mvn = tool 'maven';
+    //           withSonarQubeEnv() {
+    //           sh "${mvn}/bin/mvn clean verify sonar:sonar -Dsonar.projectKey=first-scan -Dsonar.projectName='first-scan'"
+    //             }
+    //       } 
+    //     }
+    
+    // }
+    stage('create binary') {
+            steps{
+                script{
+                    def mvn = tool 'maven';
+                    sh "${mvn}/bin/mvn clean install"
+                    sh "mv webapp/target/webapp.war webapp/target/webapp-${BUILD_NUMBER}.war"
+                }
+            }
+    }
+    stage('upload war to jfrog'){
+            steps{
+                rtUpload (
+                    serverId: "jforg-testdev",                     
+                    spec: """{                             
+                        "files": [                                     
+                                {                                         
+                                  "pattern": "webapp/target/webapp-${BUILD_NUMBER}.war",                                         
+                                  "target": "warupload-generic-local"
+                                }                                 
+                            ]                             
+                    }"""                 
+                )             
+            }
+        }
+        stage('deploy'){
+            steps{
+                script{
+                    sh """
+                        chmod 400 jan2024.pem
+                        ansible --version
+                        ansible-playbook -i hosts.ini tomcatDeploy.yml --private-key jan2024.pem -u ubuntu -e "BUILD_NUMBER=${ BUILD_NUMBER }"
+                    """
+                }
+                // ansiblePlaybook credentialsId: 'ssh_login', inventory: 'hosts.ini', playbook: 'tomcatDeploy.yml'
+            }
+        }
+ }
+}
