@@ -1,0 +1,51 @@
+pipeline{
+    agent any
+    stages{
+        stage('clone'){
+            steps{
+                cleanWs()
+                git branch: 'main', credentialsId: 'github-tokenn', url: 'https://github.com/mohithdevops9/hello_world_public_war.git'
+            }
+        }
+        // stage('soanr'){
+        //     steps{
+        //         script{
+        //          def mvn = tool 'maven3.9.6';
+        //             // withSonarQubeEnv('sonar') {
+        //             //     print "sonar"
+        //             //     // sh "${mvn}/bin/mvn clean verify sonar:sonar -Dsonar.projectKey=test -Dsonar.projectName='test'"
+        //             // }
+        //         }
+        //     }
+        // }
+        stage('create binary') {
+            steps{
+                script{
+                    def mvn = tool 'maven';
+                    sh "${mvn}/bin/mvn clean install"
+                    sh "docker build -t testimage -f Dockerfile ."
+                }
+            }
+        }
+        stage('push image to jfrog'){
+            steps{
+                sh "docker tag testimage mohitrrr.jfrog.io/testdocker/war_on_container:v${BUILD_NUMBER}"
+                withCredentials([usernamePassword(credentialsId: 'jfrog-login', passwordVariable: 'pass', usernameVariable: 'user')])  {
+                    sh "docker login -u ${user} -p ${pass} mohitrrr.jfrog.io"
+                    sh "docker push mohitrrr.jfrog.io/testdocker/war_on_container:v${BUILD_NUMBER}"
+                }
+            }
+        }
+        stage('deploy'){
+            steps{
+                script{
+                    sh """
+                        chmod 400 jan2024.pem
+                        ansible-playbook deploywithDocker.yml -i hosts.ini --private-key jan2024.pem -u ubuntu -e "BUILD_NUMBER=${ BUILD_NUMBER }"
+                    """
+                }
+                // ansiblePlaybook credentialsId: 'ssh_login', inventory: 'hosts.ini', playbook: 'tomcatDeploy.yml'
+            }
+        }
+    }
+}
